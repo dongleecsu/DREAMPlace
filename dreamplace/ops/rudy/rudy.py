@@ -87,4 +87,4 @@ class Rudy(nn.Module):
         route_utilization_map = torch.max(horizontal_utilization_map.abs_(),
                                           vertical_utilization_map.abs_())
 
-        return route_utilization_map
+        return route_utilization_map, horizontal_utilization_map.abs_(), vertical_utilization_map.abs_()

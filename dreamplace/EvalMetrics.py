@@ -100,7 +100,7 @@ class EvalMetrics (object):
                 self.overflow = overflow.data / placedb.total_movable_node_area
                 self.max_density = max_density.data 
             if "route_utilization" in ops:
-                route_utilization_map = ops["route_utilization"](var)
+                route_utilization_map, _, _ = ops["route_utilization"](var)
                 route_utilization_map_sum = route_utilization_map.sum()
                 self.route_utilization = route_utilization_map.sub_(1).clamp_(min=0).sum() / route_utilization_map_sum
             if "pin_utilization" in ops:

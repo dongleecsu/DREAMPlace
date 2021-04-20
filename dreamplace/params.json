@@ -215,5 +215,9 @@
 "deterministic_flag" : {
     "descripton" : "whether require run-to-run determinism, may have efficiency overhead", 
     "default" : 0
+    },
+"data_collection_flag": {
+    "description": "whether collect dataset for AI model",
+    "default": 1
     }
 }

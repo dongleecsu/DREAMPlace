@@ -227,7 +227,7 @@ class NonLinearPlace(BasicPlace.BasicPlace):
                         assert 0, "unsupported optimizer %s" % (optimizer_name)
 
                     # plot placement
-                    if params.plot_flag and iteration % 100 == 0:
+                    if params.plot_flag and iteration % 200 == 0:
                         cur_pos = self.pos[0].data.clone().cpu().numpy()
                         self.plot(params, placedb, iteration, cur_pos)
 
@@ -304,9 +304,25 @@ class NonLinearPlace(BasicPlace.BasicPlace):
                             pin_utilization_map = None
                             if adjust_route_area_flag:
                                 if params.adjust_nctugr_area_flag: 
-                                    route_utilization_map = model.op_collections.nctugr_congestion_map_op(pos)
+                                    route_utilization_map, h_nctugr_demand_map, v_nctugr_demand_map = model.op_collections.nctugr_congestion_map_op(pos)
+                                    if params.data_collection_flag:
+                                        _, h_rudy_demand_map, v_rudy_demand_map = model.op_collections.route_utilization_map_op(pos)
                                 else:
-                                    route_utilization_map = model.op_collections.route_utilization_map_op(pos)
+                                    route_utilization_map, h_rudy_demand_map, v_rudy_demand_map = model.op_collections.route_utilization_map_op(pos)
+                                    if params.data_collection_flag:
+                                        _, h_nctugr_demand_map, v_nctugr_demand_map = model.op_collections.nctugr_congestion_map_op(pos)
+
+                                # Note: data collection happens here!
+                                if params.data_collection_flag:
+                                    pin_utilization_map = model.op_collections.pin_utilization_map_op(pos)
+                                    data_dir = f'dataset/{params.design_name()}'
+                                    if not os.path.exists(data_dir):
+                                        os.makedirs(data_dir)
+                                    file_name = os.path.join(data_dir, f'all_data_iter{iteration}.pklz')
+                                    self.collect_dataset(placedb, file_name, pin_utilization_map,
+                                                         h_rudy_demand_map, v_rudy_demand_map,
+                                                         h_nctugr_demand_map, v_nctugr_demand_map)
+
                                 if params.plot_flag:
                                     path = "%s/%s" % (params.result_dir, params.design_name())
                                     figname = "%s/plot/route%d.png" % (path, num_area_adjust)
@@ -453,4 +469,90 @@ class NonLinearPlace(BasicPlace.BasicPlace):
         # plot placement
         if params.plot_flag:
             self.plot(params, placedb, iteration, cur_pos)
+
+        if params.data_collection_flag:
+            pos = model.data_collections.pos[0]
+            pin_utilization_map = model.op_collections.pin_utilization_map_op(pos)
+            data_dir = f'dataset/{params.design_name()}'
+            if not os.path.exists(data_dir):
+                os.makedirs(data_dir)
+            file_name = os.path.join(data_dir, f'all_data_iter{iteration}.pklz')
+
+            pos = model.data_collections.pos[0]
+            _, h_rudy_demand_map, v_rudy_demand_map = model.op_collections.route_utilization_map_op(pos)
+            _, h_nctugr_demand_map, v_nctugr_demand_map = model.op_collections.nctugr_congestion_map_op(pos)
+            self.collect_dataset(placedb, file_name, pin_utilization_map,
+                                 h_rudy_demand_map, v_rudy_demand_map,
+                                 h_nctugr_demand_map, v_nctugr_demand_map)
+
         return all_metrics
+
+    def collect_dataset(self, placedb, file_name, pin_utilization_map,
+                        h_rudy_demand_map, v_rudy_demand_map,
+                        h_nctugr_demand_map, v_nctugr_demand_map):
+        logging.info("====== Start to collecting dataset =====")
+        # Inputs
+        h_capacity = (placedb.unit_horizontal_capacities * placedb.routing_grid_size_x).sum()
+        v_capacity = (placedb.unit_vertical_capacities * placedb.routing_grid_size_y).sum()
+        db_routing_info = {
+            'x_min': placedb.routing_grid_xl, 'y_min': placedb.routing_grid_yl,
+            'x_max': placedb.routing_grid_xh, 'y_max': placedb.routing_grid_yh,
+            'x_bin_size': placedb.routing_grid_size_x, 'y_bin_size': placedb.routing_grid_size_y,
+            'grid_cell_shape': (placedb.num_routing_grids_x, placedb.num_routing_grids_y),
+            'h_capacity': h_capacity, 'v_capacity': v_capacity
+        }
+        db_place_info = {
+            'x_min': placedb.xl, 'y_min': placedb.yl,
+            'x_max': placedb.xh, 'y_max': placedb.yh,
+            'site_width': placedb.site_width, 'row_height': placedb.row_height,
+            'num_nodes': placedb.num_nodes, # num_nodes = num_movable_nodes + num_terminals + num_terminal_NIs + num_filler_nodes
+            'num_movable_nodes': placedb.num_movable_nodes,
+            'num_terminals': placedb.num_terminals,
+            'num_terminal_NIs': placedb.num_terminal_NIs,
+            'num_filler_nodes': placedb.num_filler_nodes,
+            'grid_cell_shape': (placedb.num_bins_x, placedb.num_bins_y)
+        }
+        cur_pos_ = self.pos[0].data.clone().cpu()
+        node_info = {
+            'node_position_x': cur_pos_[:placedb.num_nodes],
+            'node_position_y': cur_pos_[placedb.num_nodes:],
+            'node_size_x': self.data_collections.node_size_x.cpu(),
+            'node_size_y': self.data_collections.node_size_y.cpu(),
+            'flat_node2pin_map': self.data_collections.flat_node2pin_map.cpu(),
+            'flat_net2pin_start_map': self.data_collections.flat_node2pin_start_map.cpu()
+        }
+        pin_info = {
+            'pin2node_map': self.data_collections.pin2node_map.cpu(),
+            'pin_offset_x': self.data_collections.pin_offset_x.cpu(),
+            'pin_offset_y': self.data_collections.pin_offset_y.cpu(),
+            'pin_density_map': pin_utilization_map.cpu()
+        }
+        net_info = {
+            'flat_net2pin_map': self.data_collections.flat_net2pin_map.cpu(),
+            'flat_net2pin_start_map': self.data_collections.flat_net2pin_start_map.cpu(),
+            'pin2net_map': self.data_collections.pin2net_map.cpu(),
+            'net_mask_ignore_large_degrees': self.data_collections.net_mask_ignore_large_degrees.cpu()
+        }
+        net_density_info = {
+            'h_net_density_map': h_rudy_demand_map.cpu(),
+            'v_net_density_map': v_rudy_demand_map.cpu(),
+        }
+        inputs = {
+            'db_routing_info': db_routing_info,
+            'db_place_info': db_place_info,
+            'node_info': node_info,
+            'pin_info': pin_info,
+            'net_info': net_info,
+            'net_density_info': net_density_info
+        }
+
+        # Outputs
+        outputs = {
+            'h_demand_map': h_nctugr_demand_map.cpu(),
+            'v_demand_map': v_nctugr_demand_map.cpu()
+        }
+
+        # Write dataset
+        with gzip.open(file_name, 'wb') as f:
+            pickle.dump({'inputs': inputs, 'outputs': outputs}, f)
+        logging.info(f"=== Dataset is saved to: {file_name}")

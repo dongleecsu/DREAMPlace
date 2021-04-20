@@ -98,10 +98,12 @@ class NCTUgr(object):
         if self.routing_capacities.device != pos.device:
             self.routing_capacities = self.routing_capacities.to(pos.device)
         overflow_map = congestion_map.to(
-            pos.device) / (self.routing_capacities + 1e-6) + 1
-        #horizontal_overflow_map = overflow_map[:, :, 0:self.placedb.num_routing_layers:2].mean(dim=2)
-        #vertical_overflow_map = overflow_map[:, :, 1:self.placedb.num_routing_layers:2].mean(dim=2)
-        #ret = torch.max(horizontal_overflow_map, vertical_overflow_map)
-        ret = overflow_map.max(dim=2)[0]
+            pos.device) / (self.routing_capacities + 1e-6) + 1  # plus 1 make the overflow map to demand map
 
-        return ret
+        # For data collection, we compute horizontal and vertical overflow map
+        horizontal_overflow_map = overflow_map[:, :, 0:self.placedb.num_routing_layers:2].mean(dim=2)
+        vertical_overflow_map = overflow_map[:, :, 1:self.placedb.num_routing_layers:2].mean(dim=2)
+        ret = torch.max(horizontal_overflow_map, vertical_overflow_map)
+
+        # ret = overflow_map.max(dim=2)[0]  # Note: this is the original dreamplace implementation
+        return ret, horizontal_overflow_map, vertical_overflow_map
