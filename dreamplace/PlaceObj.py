@@ -692,7 +692,7 @@ class PlaceObj(nn.Module):
         path = "%s/%s" % (params.result_dir, params.design_name())
         return nctugr_binary.NCTUgr(
             aux_input_file=os.path.realpath(params.aux_input),
-            param_setting_file="%s/../thirdparty/NCTUgr.ICCAD2012/DAC12.set" %
+            param_setting_file="%s/../thirdparty/NCTUgr2.0/Parameter_Files/FastDefault.set" %
             (os.path.dirname(os.path.realpath(__file__))),
             tmp_pl_file="%s/%s.NCTUgr.pl" %
             (os.path.realpath(path), params.design_name()),

@@ -33,7 +33,9 @@ class NCTUgr(object):
                                    ])
         self.params = params
         self.placedb = placedb
-        self.nctugr_dir = "%s/../../../thirdparty/NCTUgr.ICCAD2012" % (
+        self.horizontal_routing_capacities = horizontal_routing_capacities
+        self.vertical_routing_capacities = vertical_routing_capacities
+        self.nctugr_dir = "%s/../../../thirdparty/NCTUgr2.0" % (
             os.path.dirname(os.path.realpath(__file__)))
 
         nctugr_bin = "%s/NCTUgr" % (self.nctugr_dir)
@@ -60,7 +62,7 @@ class NCTUgr(object):
         cmd = "ln -s %s/PORT9.dat .; \
                ln -s %s/POST9.dat .; \
                ln -s %s/POWV9.dat .; \
-                %s/NCTUgr ICCAD %s %s %s %s ;\
+                %s/NCTUgr FAST %s %s %s %s ;\
                 rm PORT9.dat POST9.dat POWV9.dat ; \
                 " % (self.nctugr_dir, self.nctugr_dir, self.nctugr_dir,
                      self.nctugr_dir, self.aux_input_file, self.tmp_pl_file,
@@ -76,7 +78,7 @@ class NCTUgr(object):
             status = 0
             for line in f:
                 line = line.strip()
-                if line.startswith("Overflowed grid edges :"):
+                if line.startswith("Overflowed grid edges :") or line.startswith("Overflowed grid edges:"):
                     status = 1
                 elif line.startswith("end") and status:
                     status = 0
@@ -89,7 +91,9 @@ class NCTUgr(object):
                            int(tokens[6][:-1]))
                     overflow = int(tokens[7])
                     assert start[2] == end[2]
-                    congestion_map[start[0], start[1], start[2]] = overflow
+                    last_value = congestion_map[start[0], start[1], start[2]]
+                    # we need to choose max value since nctugr2.0 gives horizontal and vertical congestion.
+                    congestion_map[start[0], start[1], start[2]] = max(overflow, last_value)
 
         cmd = "rm %s.*" % (self.tmp_output_file)
         logger.info(cmd)
@@ -97,12 +101,17 @@ class NCTUgr(object):
 
         if self.routing_capacities.device != pos.device:
             self.routing_capacities = self.routing_capacities.to(pos.device)
-        overflow_map = congestion_map.to(
-            pos.device) / (self.routing_capacities + 1e-6) + 1  # plus 1 make the overflow map to demand map
+        # When using nctugr2.0, it already gives the demand,
+        # so do not plus 1
+        overflow_map = congestion_map.to(pos.device)
+        # overflow_map = congestion_map.to(
+        #     pos.device) / (self.routing_capacities + 1e-6) + 1  # nctugr.iccad: plus 1 make the overflow map to demand map
 
         # For data collection, we compute horizontal and vertical overflow map
-        horizontal_overflow_map = overflow_map[:, :, 0:self.placedb.num_routing_layers:2].mean(dim=2)
-        vertical_overflow_map = overflow_map[:, :, 1:self.placedb.num_routing_layers:2].mean(dim=2)
+        horizontal_overflow_map = overflow_map[:, :, 0:self.placedb.num_routing_layers:2].sum(dim=2)
+        horizontal_overflow_map /= self.horizontal_routing_capacities.sum()
+        vertical_overflow_map = overflow_map[:, :, 1:self.placedb.num_routing_layers:2].sum(dim=2)
+        vertical_overflow_map /= self.vertical_routing_capacities.sum()
         ret = torch.max(horizontal_overflow_map, vertical_overflow_map)
 
         # ret = overflow_map.max(dim=2)[0]  # Note: this is the original dreamplace implementation
