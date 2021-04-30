@@ -3,7 +3,7 @@
 Via_Cost = 1					# It must be >=1
 Wirelength_Optimization_Level = 20 # It must be set between 1 and 2000. The wirelength of routing result is shorter as this value is larger.
 Output_Routing_Result = Yes # Yes or No
-Output_Overflow_Information = No # Yes or No
+Output_Overflow_Information = Yes # Yes or No
 Pin_Blockage_Factor = 0 # It must be >=0.0 for ICCAD contest, 0.05
 
 #Placement parameter
